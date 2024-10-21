@@ -2,9 +2,9 @@
 
 This is a simple [Next.js](https://nextjs.org) project that implements a mind map visualization tool using [React Flow](https://reactflow.dev/).
 
-Watch a demo of it in action [here](https://www.youtube.com/watch?v=Y-9He-tG3aM).
+Watch a demo of it in action [here](https://www.youtube.com/watch?v=Y-9He-tG3aM) or check out the gif below.
 
-![Screenshot](public/screenshot.png)
+![Demo gif](public/demo.gif)
 
 The UI is built using [shadcn](https://ui.shadcn.com/) and some components from [Magic UI](https://magicui.design/).
 
