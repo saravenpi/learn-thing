@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import Hero from "./Hero";
 import CreateMindMapForm from "./CreateMindMapForm";
 import Credits from "./Credits";
@@ -14,6 +15,14 @@ interface CreateMindMapProps {
 }
 
 const CreateMindMap = ({ fetchMindMap }: CreateMindMapProps) => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CreateMindMapContent fetchMindMap={fetchMindMap} />
+    </Suspense>
+  );
+};
+
+const CreateMindMapContent = ({ fetchMindMap }: CreateMindMapProps) => {
   const searchParams = useSearchParams();
   const error = searchParams.get("error") === "true";
 

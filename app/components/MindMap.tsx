@@ -12,6 +12,7 @@ import ReactFlow, {
   useNodesState,
   useEdgesState,
   MiniMap,
+  ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
@@ -161,16 +162,15 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  if (!data) return null;
-
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
+    if (!data) return { nodes: [], edges: [] };
     return createNodesAndEdges({ ...data, order: 0 }, null, 0, 0, 0, 600, 200);
   }, [data]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
 
-  const onInit = useCallback((reactFlowInstance: any) => {
+  const onInit = useCallback((reactFlowInstance: ReactFlowInstance) => {
     reactFlowInstance.fitView({ padding: 0.2 });
   }, []);
 
@@ -188,6 +188,7 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
   );
 
   const downloadMarkdown = () => {
+    if (!data) return;
     const markdown = convertToMarkdown(data);
     const blob = new Blob([markdown], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
@@ -201,8 +202,11 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
   };
 
   const handleDownloadJson = () => {
+    if (!data) return;
     downloadJson(data, `${data.title.replace(/\s+/g, "_")}_mind_map.json`);
   };
+
+  if (!data) return null;
 
   return (
     <div style={{ width: "100%", height: "100vh" }}>
