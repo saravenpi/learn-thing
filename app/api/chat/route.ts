@@ -1,59 +1,83 @@
 import { ollama } from "ollama-ai-provider";
-import { convertToCoreMessages, generateText } from "ai";
+import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { defaultLocalPrompt, defaultExternalPrompt } from "@/app/lib/prompts";
-import { MindMapData, MindMapNode } from "@/app/components/MindMap";
 
-const validateLinks = async (node: MindMapNode): Promise<MindMapNode> => {
-  if (node.links) {
-    const validatedLinks = await Promise.all(
-      node.links.map(async (link) => {
-        try {
-          const response = await fetch(link.url, { method: "HEAD" });
-          return response.ok ? link : null;
-        } catch {
-          return null;
-        }
-      })
-    );
-    node.links = validatedLinks.filter(
-      (link): link is NonNullable<typeof link> => link !== null
-    );
-  }
+import {
+  FlatMindMapSchema,
+  FlatSubtopicSchema,
+  Subtopic,
+} from "@/app/lib/schemas";
+import { validateMindMapData } from "@/lib/utils";
+import { z } from "zod";
 
-  if (node.nodes) {
-    node.nodes = await Promise.all(node.nodes.map(validateLinks));
-  }
+const USE_LOCAL_MODELS = process.env.NEXT_PUBLIC_USE_LOCAL_MODELS === "true";
+const LOCAL_MODEL = "llama3.1";
+const EXTERNAL_MODEL = "gpt-4o";
 
-  return node;
-};
+const getModel = (useLocalModel: boolean) =>
+  useLocalModel
+    ? ollama(LOCAL_MODEL)
+    : openai(EXTERNAL_MODEL, { structuredOutputs: true });
+
+const getPrompt = (useLocalModel: boolean, topic: string) =>
+  (useLocalModel ? defaultLocalPrompt : defaultExternalPrompt) + topic;
 
 export async function POST(req: Request) {
   const { topic } = await req.json();
-  const shouldUseLocalModels =
-    process.env.NEXT_PUBLIC_USE_LOCAL_MODELS === "true";
-  const model = shouldUseLocalModels
-    ? ollama("llama3.1")
-    : openai("gpt-3.5-turbo");
-
-  const result = await generateText({
-    model,
-    messages: convertToCoreMessages([
-      {
-        role: "user",
-        content: shouldUseLocalModels
-          ? defaultLocalPrompt + topic
-          : defaultExternalPrompt + topic,
-      },
-    ]),
-  });
 
   try {
-    const mindMapData: MindMapData = JSON.parse(result.text);
-    mindMapData.nodes = await Promise.all(mindMapData.nodes.map(validateLinks));
-    return new Response(JSON.stringify(mindMapData));
+    const model = getModel(USE_LOCAL_MODELS);
+    const prompt = getPrompt(USE_LOCAL_MODELS, topic);
+
+    const { object: flatMindMapData } = await generateObject({
+      model,
+      prompt,
+      schema: FlatMindMapSchema,
+    });
+
+    const nestedMindMapData = {
+      topic: flatMindMapData.topic,
+      subtopics: reconstructNestedStructure(flatMindMapData.subtopics),
+    };
+
+    const validatedMindMapData = await validateMindMapData(nestedMindMapData);
+
+    return new Response(JSON.stringify(validatedMindMapData));
   } catch (error) {
-    console.error("Error parsing or validating mind map data:", error);
+    console.error("Error generating or processing mind map:", error);
     return new Response("Error generating mind map", { status: 500 });
   }
+}
+
+function reconstructNestedStructure(
+  flatSubtopics: z.infer<typeof FlatSubtopicSchema>[]
+): Subtopic[] {
+  const subtopicMap = new Map<string, Subtopic>();
+  const rootSubtopics: Subtopic[] = [];
+
+  flatSubtopics.forEach((subtopic) => {
+    subtopicMap.set(subtopic.id, {
+      name: subtopic.name,
+      details: subtopic.details,
+      links: subtopic.links,
+      subtopics: [],
+    });
+  });
+
+  flatSubtopics.forEach((subtopic) => {
+    const reconstructedSubtopic = subtopicMap.get(subtopic.id);
+    if (reconstructedSubtopic) {
+      if (subtopic.parentId === null) {
+        rootSubtopics.push(reconstructedSubtopic);
+      } else {
+        const parent = subtopicMap.get(subtopic.parentId);
+        if (parent && parent.subtopics) {
+          parent.subtopics.push(reconstructedSubtopic);
+        }
+      }
+    }
+  });
+
+  return rootSubtopics;
 }

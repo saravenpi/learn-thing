@@ -23,43 +23,42 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Download, PlusSquare } from "lucide-react";
+import {
+  ExternalLink,
+  Download,
+  PlusSquare,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { convertToMarkdown, downloadJson } from "@/lib/utils";
 import MindMapLegend from "./MindMapLegend";
 import { motion, AnimatePresence } from "framer-motion";
 import Credits from "./Credits";
-
-interface Link {
-  title: string;
-  url: string;
-}
-
-export interface MindMapNode {
-  title: string;
-  description: string;
-  details?: string;
-  links?: Link[];
-  order: number;
-  nodes: MindMapNode[];
-}
-
-export interface MindMapData {
-  title: string;
-  description: string;
-  nodes: MindMapNode[];
-}
+import { MindMapData, Subtopic, Link } from "@/app/lib/schemas";
 
 const NodeContent: React.FC<{
-  title: string;
-  description: string;
-  details?: string;
+  name: string;
+  details: string;
   onClick: () => void;
-}> = ({ title, onClick }) => (
+  onExpand: () => void;
+  isExpanded: boolean;
+  hasChildren: boolean;
+}> = ({ name, onClick, onExpand, isExpanded, hasChildren }) => (
   <div
-    className="p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out cursor-pointer w-48 bg-white hover:bg-gray-100"
+    className="p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out cursor-pointer w-48 bg-white hover:bg-gray-100 flex items-center justify-between"
     onClick={onClick}
   >
-    <div className="text-lg font-bold text-center">{title}</div>
+    <div className="text-lg font-bold">{name}</div>
+    {hasChildren && (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onExpand();
+        }}
+      >
+        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+      </button>
+    )}
   </div>
 );
 
@@ -86,30 +85,41 @@ const LeafNode: React.FC<NodeProps> = ({ data }) => (
 );
 
 const createNodesAndEdges = (
-  node: MindMapNode,
+  subtopic: Subtopic,
   parentId: string | null,
   x: number,
   y: number,
   level: number,
   horizontalSpacing: number,
-  verticalSpacing: number
+  verticalSpacing: number,
+  expandedNodes: Set<string>,
+  onExpand: (nodeId: string, parentId: string | null) => void
 ): { nodes: Node[]; edges: Edge[] } => {
-  const nodeId = `${parentId ? `${parentId}-` : ""}${(node.title || "").replace(
+  const nodeId = `${parentId ? `${parentId}-` : ""}${subtopic.name.replace(
     /\s+/g,
     "-"
   )}`;
   const nodeType =
-    level === 0 ? "root" : node.nodes.length > 0 ? "branch" : "leaf";
+    level === 0
+      ? "root"
+      : subtopic.subtopics && subtopic.subtopics.length > 0
+      ? "branch"
+      : "leaf";
+  const isExpanded = expandedNodes.has(nodeId);
 
   const newNode: Node = {
     id: nodeId,
     type: nodeType,
     position: { x, y },
     data: {
-      title: node.title,
-      description: node.description,
-      details: node.details,
-      links: node.links,
+      name: subtopic.name,
+      details: subtopic.details,
+      links: subtopic.links,
+      isExpanded,
+      hasChildren: subtopic.subtopics && subtopic.subtopics.length > 0,
+      onExpand: () => onExpand(nodeId, parentId),
+      onClick: () => {},
+      parentId,
     },
   };
 
@@ -125,22 +135,24 @@ const createNodesAndEdges = (
     });
   }
 
-  if (node.nodes && node.nodes.length > 0) {
-    const childrenCount = node.nodes.length;
+  if (isExpanded && subtopic.subtopics && subtopic.subtopics.length > 0) {
+    const childrenCount = subtopic.subtopics.length;
     const totalWidth = childrenCount * horizontalSpacing;
     const startX = x - totalWidth / 2 + horizontalSpacing / 2;
 
-    node.nodes.forEach((childNode, index) => {
+    subtopic.subtopics.forEach((childSubtopic: Subtopic, index: number) => {
       const childX = startX + index * horizontalSpacing;
       const childY = y + verticalSpacing;
       const { nodes: childNodes, edges: childEdges } = createNodesAndEdges(
-        childNode,
+        childSubtopic,
         nodeId,
         childX,
         childY,
         level + 1,
-        horizontalSpacing / 1.5,
-        verticalSpacing
+        horizontalSpacing,
+        verticalSpacing * 1.2,
+        expandedNodes,
+        onExpand
       );
       nodes = [...nodes, ...childNodes];
       edges = [...edges, ...childEdges];
@@ -151,8 +163,13 @@ const createNodesAndEdges = (
 };
 
 const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
-  const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null);
+  const [selectedSubtopic, setSelectedSubtopic] = useState<Subtopic | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -162,21 +179,79 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    if (!data) return { nodes: [], edges: [] };
-    return createNodesAndEdges({ ...data, order: 0 }, null, 0, 0, 0, 600, 200);
-  }, [data]);
-
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    setSelectedSubtopic(node.data as Subtopic);
+  }, []);
 
   const onInit = useCallback((reactFlowInstance: ReactFlowInstance) => {
     reactFlowInstance.fitView({ padding: 0.2 });
   }, []);
 
-  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
-    setSelectedNode(node.data as MindMapNode);
-  }, []);
+  useEffect(() => {
+    if (!data) return;
+
+    const onExpand = (nodeId: string, parentId: string | null) => {
+      setExpandedNodes((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(nodeId)) {
+          newSet.delete(nodeId);
+        } else {
+          // If expanding, close other expanded siblings
+          if (parentId) {
+            nodes.forEach((node) => {
+              if (node.data.parentId === parentId && node.id !== nodeId) {
+                newSet.delete(node.id);
+              }
+            });
+          }
+          newSet.add(nodeId);
+        }
+        return newSet;
+      });
+    };
+
+    const { nodes: newNodes, edges: newEdges } = createNodesAndEdges(
+      { name: data.topic, details: "", links: [], subtopics: data.subtopics },
+      null,
+      0,
+      0,
+      0,
+      300,
+      150,
+      expandedNodes,
+      onExpand
+    );
+
+    setNodes(
+      newNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          onClick: () => onNodeClick({} as React.MouseEvent, node),
+        },
+      }))
+    );
+    setEdges(newEdges);
+  }, [data, expandedNodes, setNodes, setEdges, onNodeClick]);
+
+  const downloadMarkdown = () => {
+    if (!data) return;
+    const markdown = convertToMarkdown(data);
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${data.topic.replace(/\s+/g, "_")}_mind_map.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadJson = () => {
+    if (!data) return;
+    downloadJson(data, `${data.topic.replace(/\s+/g, "_")}_mind_map.json`);
+  };
 
   const nodeTypes = useMemo(
     () => ({
@@ -186,25 +261,6 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
     }),
     []
   );
-
-  const downloadMarkdown = () => {
-    if (!data) return;
-    const markdown = convertToMarkdown(data);
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${data.title.replace(/\s+/g, "_")}_mind_map.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadJson = () => {
-    if (!data) return;
-    downloadJson(data, `${data.title.replace(/\s+/g, "_")}_mind_map.json`);
-  };
 
   if (!data) return null;
 
@@ -254,7 +310,7 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
               fitView
               minZoom={0.1}
               maxZoom={1.5}
-              defaultViewport={{ x: 0, y: 0, zoom: 0.4 }}
+              defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
               elementsSelectable={true}
               nodesDraggable={false}
             >
@@ -267,27 +323,24 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
           </motion.div>
         )}
       </AnimatePresence>
-      <Sheet open={!!selectedNode} onOpenChange={() => setSelectedNode(null)}>
+      <Sheet
+        open={!!selectedSubtopic}
+        onOpenChange={() => setSelectedSubtopic(null)}
+      >
         <SheetContent className="overflow-y-auto">
           <SheetHeader>
             <SheetTitle className="text-2xl mt-4 font-bold">
-              {selectedNode?.title}
+              {selectedSubtopic?.name}
             </SheetTitle>
             <SheetDescription className="mb-2 text-gray-700">
-              {selectedNode?.description}
+              {selectedSubtopic?.details}
             </SheetDescription>
           </SheetHeader>
-          {selectedNode?.details && (
-            <div className="mt-8">
-              <h3 className="text-xl font-semibold mb-2">Details</h3>
-              <p className="text-gray-700">{selectedNode.details}</p>
-            </div>
-          )}
-          {selectedNode?.links && selectedNode.links.length > 0 && (
+          {selectedSubtopic?.links && selectedSubtopic.links.length > 0 && (
             <div className="mt-8">
               <h3 className="text-xl font-semibold mb-2">Learn More</h3>
               <div className="space-y-2 mt-4">
-                {selectedNode.links.map((link, index) => (
+                {selectedSubtopic.links.map((link: Link, index: number) => (
                   <Button
                     key={index}
                     variant="outline"
