@@ -29,12 +29,20 @@ import {
   PlusSquare,
   ChevronDown,
   ChevronRight,
+  HelpCircle,
 } from "lucide-react";
 import { convertToMarkdown, downloadJson } from "@/lib/utils";
 import MindMapLegend from "./MindMapLegend";
 import { motion, AnimatePresence } from "framer-motion";
 import Credits from "./Credits";
 import { MindMapData, Subtopic, Link } from "@/app/lib/schemas";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const NodeContent: React.FC<{
   name: string;
@@ -48,13 +56,14 @@ const NodeContent: React.FC<{
     className="p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out cursor-pointer w-48 bg-white hover:bg-gray-100 flex items-center justify-between"
     onClick={onClick}
   >
-    <div className="text-lg font-bold">{name}</div>
+    <div className="text-lg font-bold text-center flex-grow">{name}</div>
     {hasChildren && (
       <button
         onClick={(e) => {
           e.stopPropagation();
           onExpand();
         }}
+        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 flex-shrink-0"
       >
         {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
       </button>
@@ -170,6 +179,8 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [isLegendOpen, setIsLegendOpen] = useState(false); // Add state for legend modal
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false); // State for confirmation dialog
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -196,7 +207,6 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
         if (newSet.has(nodeId)) {
           newSet.delete(nodeId);
         } else {
-          // If expanding, close other expanded siblings
           if (parentId) {
             nodes.forEach((node) => {
               if (node.data.parentId === parentId && node.id !== nodeId) {
@@ -262,6 +272,15 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
     []
   );
 
+  const handleNewClick = () => {
+    setIsConfirmOpen(true);
+  };
+
+  const handleConfirmNew = () => {
+    setIsConfirmOpen(false);
+    window.location.reload();
+  };
+
   if (!data) return null;
 
   return (
@@ -275,15 +294,62 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
             transition={{ duration: 0.5, ease: "easeOut" }}
             style={{ width: "100%", height: "100%" }}
           >
+            <div className="absolute top-4 left-4 z-10">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                    How to use
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>How to use</DialogTitle>
+                  </DialogHeader>
+                  <MindMapLegend />
+                </DialogContent>
+              </Dialog>
+            </div>
             <div className="absolute top-4 right-4 z-10 flex gap-2">
-              <Button
-                onClick={() => window.location.reload()}
-                variant="outline"
-                className="flex items-center gap-2 cursor-pointer"
-              >
-                <PlusSquare className="w-4 h-4" />
-                New
-              </Button>
+              <Dialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    onClick={handleNewClick}
+                    variant="outline"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <PlusSquare className="w-4 h-4" />
+                    New
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirm New Mind Map</DialogTitle>
+                  </DialogHeader>
+                  <p>
+                    By creating a new mind map, this one will be lost. If you
+                    want to keep it, make sure to download it as a JSON or
+                    Markdown file.
+                  </p>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                      onClick={() => setIsConfirmOpen(false)}
+                      variant="outline"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleConfirmNew}
+                      className="bg-red-500 text-white"
+                    >
+                      Confirm
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
               <Button
                 onClick={downloadMarkdown}
                 className="flex items-center gap-2 cursor-pointer"
@@ -318,7 +384,6 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
               <Controls showInteractive={false} />
               <MiniMap />
             </ReactFlow>
-            <MindMapLegend />
             <Credits />
           </motion.div>
         )}

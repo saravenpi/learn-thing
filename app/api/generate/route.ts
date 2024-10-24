@@ -1,5 +1,5 @@
 import { ollama } from "ollama-ai-provider";
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { defaultLocalPrompt, defaultExternalPrompt } from "@/app/lib/prompts";
 
@@ -30,11 +30,23 @@ export async function POST(req: Request) {
     const model = getModel(USE_LOCAL_MODELS);
     const prompt = getPrompt(USE_LOCAL_MODELS, topic);
 
-    const { object: flatMindMapData } = await generateObject({
-      model,
-      prompt,
-      schema: FlatMindMapSchema,
-    });
+    const generateMindMap = async (): Promise<
+      z.infer<typeof FlatMindMapSchema>
+    > => {
+      if (USE_LOCAL_MODELS) {
+        const response = await generateText({ model, prompt });
+        return JSON.parse(response.text);
+      }
+
+      const { object } = await generateObject({
+        model,
+        prompt,
+        schema: FlatMindMapSchema,
+      });
+      return object;
+    };
+
+    const flatMindMapData = await generateMindMap();
 
     const nestedMindMapData = {
       topic: flatMindMapData.topic,
@@ -67,15 +79,16 @@ function reconstructNestedStructure(
 
   flatSubtopics.forEach((subtopic) => {
     const reconstructedSubtopic = subtopicMap.get(subtopic.id);
-    if (reconstructedSubtopic) {
-      if (subtopic.parentId === null) {
-        rootSubtopics.push(reconstructedSubtopic);
-      } else {
-        const parent = subtopicMap.get(subtopic.parentId);
-        if (parent && parent.subtopics) {
-          parent.subtopics.push(reconstructedSubtopic);
-        }
-      }
+    if (!reconstructedSubtopic) return;
+
+    if (subtopic.parentId === null) {
+      rootSubtopics.push(reconstructedSubtopic);
+      return;
+    }
+
+    const parent = subtopicMap.get(subtopic.parentId);
+    if (parent && parent.subtopics) {
+      parent.subtopics.push(reconstructedSubtopic);
     }
   });
 
