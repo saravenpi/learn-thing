@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MindMapData } from "../components/MindMap";
+import { MindMapData } from "../lib/schemas";
 
 export function useMindMapData() {
   const [data, setData] = useState<MindMapData | null>(null);
@@ -11,7 +11,7 @@ export function useMindMapData() {
   const fetchMindMap = async (topic: string) => {
     try {
       setIsLoading(true);
-      const response = await fetch("/api/chat", {
+      const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
