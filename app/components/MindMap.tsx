@@ -35,7 +35,7 @@ import { convertToMarkdown, downloadJson } from "@/lib/utils";
 import MindMapLegend from "./MindMapLegend";
 import { motion, AnimatePresence } from "framer-motion";
 import Credits from "./Credits";
-import { MindMapData, Subtopic, Link } from "@/app/lib/schemas";
+import { Subtopic, Link } from "@/app/lib/schemas";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+
+interface MindMapProps {
+  data: { topic: string; subtopics: Subtopic[] } | null;
+  onExpandMap: (nodeId: string) => Promise<void>;
+}
 
 const NodeContent: React.FC<{
   name: string;
@@ -51,24 +62,53 @@ const NodeContent: React.FC<{
   onExpand: () => void;
   isExpanded: boolean;
   hasChildren: boolean;
-}> = ({ name, onClick, onExpand, isExpanded, hasChildren }) => (
-  <div
-    className="p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out cursor-pointer w-48 bg-white hover:bg-gray-100 flex items-center justify-between"
-    onClick={onClick}
-  >
-    <div className="text-lg font-bold text-center flex-grow">{name}</div>
-    {hasChildren && (
-      <button
+  isRoot: boolean;
+  onExpandMap: (nodeId: string) => Promise<void>;
+  nodeId: string;
+}> = ({
+  name,
+  onClick,
+  onExpand,
+  isExpanded,
+  hasChildren,
+  onExpandMap,
+  nodeId,
+}) => (
+  <ContextMenu>
+    <ContextMenuTrigger>
+      <div
+        className="p-4 rounded-lg shadow-md transition-all duration-300 ease-in-out cursor-pointer w-48 bg-white hover:bg-gray-100 flex items-center justify-between"
+        onClick={onClick}
+      >
+        <div className="text-lg font-bold text-center flex-grow">{name}</div>
+        {hasChildren && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onExpand();
+            }}
+            className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 flex-shrink-0"
+          >
+            {isExpanded ? (
+              <ChevronDown size={20} />
+            ) : (
+              <ChevronRight size={20} />
+            )}
+          </button>
+        )}
+      </div>
+    </ContextMenuTrigger>
+    <ContextMenuContent>
+      <ContextMenuItem
         onClick={(e) => {
           e.stopPropagation();
-          onExpand();
+          onExpandMap(nodeId);
         }}
-        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 flex-shrink-0"
       >
-        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-      </button>
-    )}
-  </div>
+        Expand Map
+      </ContextMenuItem>
+    </ContextMenuContent>
+  </ContextMenu>
 );
 
 const RootNode: React.FC<NodeProps> = ({ data }) => (
@@ -129,6 +169,8 @@ const createNodesAndEdges = (
       onExpand: () => onExpand(nodeId, parentId),
       onClick: () => {},
       parentId,
+      isRoot: level === 0,
+      nodeId: nodeId,
     },
   };
 
@@ -171,7 +213,7 @@ const createNodesAndEdges = (
   return { nodes, edges };
 };
 
-const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
+const MindMap: React.FC<MindMapProps> = ({ data, onExpandMap }) => {
   const [selectedSubtopic, setSelectedSubtopic] = useState<Subtopic | null>(
     null
   );
@@ -179,8 +221,7 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [isLegendOpen, setIsLegendOpen] = useState(false); // Add state for legend modal
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false); // State for confirmation dialog
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -192,6 +233,17 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
 
   const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
     setSelectedSubtopic(node.data as Subtopic);
+    if (node.data.isRoot) return;
+
+    setExpandedNodes((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(node.id)) {
+        newSet.delete(node.id);
+        return newSet;
+      }
+      newSet.add(node.id);
+      return newSet;
+    });
   }, []);
 
   const onInit = useCallback((reactFlowInstance: ReactFlowInstance) => {
@@ -238,11 +290,12 @@ const MindMap: React.FC<{ data: MindMapData | null }> = ({ data }) => {
         data: {
           ...node.data,
           onClick: () => onNodeClick({} as React.MouseEvent, node),
+          onExpandMap: () => onExpandMap(node.id),
         },
       }))
     );
     setEdges(newEdges);
-  }, [data, expandedNodes, setNodes, setEdges, onNodeClick]);
+  }, [data, expandedNodes, setNodes, setEdges, onNodeClick, onExpandMap]);
 
   const downloadMarkdown = () => {
     if (!data) return;

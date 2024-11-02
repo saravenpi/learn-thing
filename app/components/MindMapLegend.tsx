@@ -5,6 +5,9 @@ const MindMapLegend: React.FC = () => {
     <ul className="space-y-2 text-sm">
       <li>• Click a node to view details;</li>
       <li>• Click the arrow to expand or collapse a node;</li>
+      <li>
+        • Right click a node to expand it with related subtopics and links;
+      </li>
       <li>• Use mouse wheel or pinch to zoom;</li>
       <li>• Click and drag the background to pan;</li>
       <li>• Download the map as JSON or Markdown.</li>
