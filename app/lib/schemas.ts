@@ -43,3 +43,8 @@ export const FlatMindMapSchema = z.object({
 });
 
 export type MindMapData = z.infer<typeof MindMapSchema>;
+
+export const ExpandMapRequestSchema = z.object({
+  topic: z.string(),
+  nodeId: z.string(),
+});

@@ -8,7 +8,7 @@ import CreateMindMap from "./CreateMindMap";
 import { useRouter } from "next/navigation";
 
 export default function MindMapContainer() {
-  const { data, isLoading, error, fetchMindMap } = useMindMapData();
+  const { data, isLoading, error, fetchMindMap, expandMap } = useMindMapData();
   const router = useRouter();
 
   if (isLoading) return <LoadingMindMap />;
@@ -23,7 +23,7 @@ export default function MindMapContainer() {
   return (
     <div className="w-full h-full">
       <ReactFlowProvider>
-        <MindMap data={data} />
+        <MindMap data={data} onExpandMap={expandMap} />
       </ReactFlowProvider>
     </div>
   );
