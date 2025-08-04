@@ -9,6 +9,13 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
+RUN npm ci --legacy-peer-deps
+
+# Install production dependencies only
+FROM base AS production-deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --legacy-peer-deps
 
 # Rebuild the source code only when needed
@@ -35,6 +42,8 @@ ENV NODE_ENV production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+# Copy production node_modules
+COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=builder /app/public ./public
 
 # Set the correct permission for prerender cache
