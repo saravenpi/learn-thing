@@ -36,26 +36,14 @@ FROM base AS runner
 WORKDIR /app
 
 # Define build arguments for environment variables
-ARG NODE_ENV=production
-ARG NEXT_TELEMETRY_DISABLED
-ARG DATABASE_URL
-ARG NEXTAUTH_SECRET
-ARG NEXTAUTH_URL
-ARG GITHUB_CLIENT_ID
-ARG GITHUB_CLIENT_SECRET
-ARG PORT=3000
-ARG HOSTNAME=0.0.0.0
+ARG OPENAI_API_KEY
+
+ENV NODE_ENV production
+# Uncomment the following line in case you want to disable telemetry during runtime.
+# ENV NEXT_TELEMETRY_DISABLED 1
 
 # Set environment variables from build arguments
-ENV NODE_ENV=$NODE_ENV
-ENV NEXT_TELEMETRY_DISABLED=$NEXT_TELEMETRY_DISABLED
-ENV DATABASE_URL=$DATABASE_URL
-ENV NEXTAUTH_SECRET=$NEXTAUTH_SECRET
-ENV NEXTAUTH_URL=$NEXTAUTH_URL
-ENV GITHUB_CLIENT_ID=$GITHUB_CLIENT_ID
-ENV GITHUB_CLIENT_SECRET=$GITHUB_CLIENT_SECRET
-ENV PORT=$PORT
-ENV HOSTNAME=$HOSTNAME
+ENV OPENAI_API_KEY=$OPENAI_API_KEY
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -76,5 +64,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
 
 EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
 
 CMD ["node", "server.js"]
