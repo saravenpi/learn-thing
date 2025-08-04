@@ -260,9 +260,11 @@ const MindMap: React.FC<MindMapProps> = ({ data, onExpandMap }) => {
           newSet.delete(nodeId);
         } else {
           if (parentId) {
-            nodes.forEach((node) => {
-              if (node.data.parentId === parentId && node.id !== nodeId) {
-                newSet.delete(node.id);
+            // Remove other expanded nodes with the same parent
+            // We'll handle this through the data structure instead of relying on current nodes
+            prev.forEach((expandedId) => {
+              if (expandedId.startsWith(parentId + '-') && expandedId !== nodeId) {
+                newSet.delete(expandedId);
               }
             });
           }

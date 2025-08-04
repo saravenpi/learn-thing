@@ -11,6 +11,26 @@ import {
 import { validateMindMapData } from "@/lib/utils";
 import { z } from "zod";
 
+interface ParsedSubtopic {
+  name: string;
+  details: string;
+  links: { type: string; title: string; url: string; }[];
+}
+
+interface ParsedResponse {
+  topic?: string;
+  subtopics: ParsedSubtopic[];
+}
+
+interface NodeWithHierarchy {
+  name: string;
+  details: string;
+  links: { type: string; title: string; url: string; }[];
+  subtopics: NodeWithHierarchy[];
+  id: string;
+  parentId: string | null;
+}
+
 const USE_LOCAL_MODELS = process.env.NEXT_PUBLIC_USE_LOCAL_MODELS === "true";
 const LOCAL_MODEL = "llama3.1";
 const EXTERNAL_MODEL = "gpt-4o";
@@ -45,10 +65,10 @@ export async function POST(req: Request) {
           const cleanedResponse = response.text.trim();
           const lastBrace = cleanedResponse.lastIndexOf("}");
           const validJson = cleanedResponse.substring(0, lastBrace + 1);
-          let parsedResponse = JSON.parse(validJson);
+          const parsedResponse = JSON.parse(validJson) as ParsedResponse;
 
           if (nodeId) {
-            const subtopics = parsedResponse.subtopics.map((st: any) => ({
+            const subtopics = parsedResponse.subtopics.map((st: ParsedSubtopic) => ({
               id: `${nodeId}-${st.name.replace(/\s+/g, "-")}`,
               parentId: nodeId,
               name: st.name,
@@ -62,7 +82,16 @@ export async function POST(req: Request) {
             };
           }
 
-          return parsedResponse;
+          return {
+            topic: parsedResponse.topic || topic,
+            subtopics: parsedResponse.subtopics.map((st) => ({
+              id: st.name.replace(/\s+/g, "-"),
+              parentId: null,
+              name: st.name,
+              details: st.details,
+              links: st.links || [],
+            })),
+          };
         } catch (parseError) {
           console.error("Failed to parse model response:", parseError);
           return {
@@ -128,17 +157,7 @@ export async function POST(req: Request) {
 function reconstructNestedStructure(
   flatSubtopics: z.infer<typeof FlatSubtopicSchema>[]
 ): Subtopic[] {
-  const subtopicMap = new Map<
-    string,
-    {
-      name: string;
-      details: string;
-      links: any[];
-      subtopics: any[];
-      id: string;
-      parentId: string | null;
-    }
-  >();
+  const subtopicMap = new Map<string, NodeWithHierarchy>();
 
   flatSubtopics.forEach((subtopic) => {
     subtopicMap.set(subtopic.id, {
@@ -151,7 +170,7 @@ function reconstructNestedStructure(
     });
   });
 
-  const rootNodes: any[] = [];
+  const rootNodes: NodeWithHierarchy[] = [];
   flatSubtopics.forEach((subtopic) => {
     const node = subtopicMap.get(subtopic.id);
     if (!node) return;
@@ -170,8 +189,8 @@ function reconstructNestedStructure(
     parent.subtopics.push(node);
   });
 
-  const cleanNode = (node: any): Subtopic => {
-    const { id, parentId, ...cleanedNode } = node;
+  const cleanNode = (node: NodeWithHierarchy): Subtopic => {
+    const { id: _id, parentId: _parentId, ...cleanedNode } = node;
     return {
       ...cleanedNode,
       subtopics: node.subtopics.map(cleanNode),
